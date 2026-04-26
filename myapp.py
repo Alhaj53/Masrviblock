@@ -225,7 +225,7 @@ def worker():
             success = False
 
             with ThreadPoolExecutor(
-                max_workers=20
+                max_workers=10
             ) as executor:
 
                 futures = [

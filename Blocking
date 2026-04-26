@@ -245,3 +245,7 @@ for num in numbers_list:
                 stop_event.set()
 
                 break
+if __name__ == "__main__":
+    while True:
+        # تشغيل الكود الرئيسي
+        pass
